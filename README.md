@@ -1,5 +1,7 @@
 # MYHS Central Card
 
+![MYHS Logo](images/myhs-logo.png)
+
 **MYHS Cards for Home Assistant**  
 **Version 1.0.3** · 16 Status-Kacheln · Visueller Editor
 
