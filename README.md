@@ -3,7 +3,7 @@
 ![MYHS Logo](images/myhs-logo.png)
 
 **MYHS Cards for Home Assistant**  
-**Version 1.0.5** · 16 Status-Kacheln · Visueller Editor
+**Version 1.0.6** · 16 Status-Kacheln · Visueller Editor · Loxone-inspirierte Statusmeldungen
 
 MYHS Central Card ist eine moderne Dashboard-Karte für Home Assistant. Sie fasst wichtige Informationen aus deinem Smart Home in einer flexibel konfigurierbaren Übersicht zusammen – mit klaren Statusanzeigen, farbigen Verläufen und einem integrierten visuellen Editor.
 
@@ -105,27 +105,37 @@ Die Darstellung und die aktiv verwendeten Farben passen sich an die Home-Assista
 
 ## Statusmeldungen
 
-Kurze, einheitliche Statusmeldungen für alle 16 Kacheltypen. Beispiele:
+Die kurzen Statusmeldungen orientieren sich an der **deutschen Loxone-Bedienlogik**.
+Sie sind jedoch keine garantierten Originaltexte der Loxone-App: Loxone ermöglicht eigene Statustexte.
+Die MYHS Central Card liest weiterhin **Home-Assistant-Entitäten**, nicht direkt einen Loxone Miniserver.
+
+Beispiele:
 
 | Bereich | Beispieltext |
 | --- | --- |
 | Sicherheit | Unscharf · Zuhause / Scharf · Abwesend |
-| Fenster | Alle geschlossen / 3 geöffnet |
+| Fenster | Alle geschlossen / 3 geöffnet / 1 gekippt |
 | Licht | Alles aus / 2 Räume aktiv |
 | Energie | Keine Geräte aktiv / 6 Geräte aktiv |
-| Heizung und Klima | Keine Räume aktiv / 2 Räume heizen / 1 im Automatikmodus |
+| Heizung und Klima | Keine Räume aktiv / 2 Räume heizen / 1 Raum Automatik |
 | Audio | Alle pausiert / Spielt in 2 Räumen |
-| Beschattung | Alle offen / 2 teilweise · 1 geschlossen |
+| Beschattung | Alle oben / 2 teilweise · 1 unten |
 | Media | Alle Geräte aus / 2 Räume aktiv |
-| Lüftung | Raumluft ausgewogen / 2 Räume lüften |
+| Lüftung | Luftqualität gut / 2 Räume lüften |
 | Zutritt | Verriegelt / Entriegelt |
 | Wecker | Kein Wecker aktiv / 2 Wecker aktiv |
-| Präsenz | Keine Bewegung / 1 Raum aktiv |
+| Präsenz | Keine Präsenz / Präsenz in 1 Raum |
 | Anwesenheit | Alle abwesend / 4 anwesend |
 | Fahrzeuge | Alle Fahrzeuge parken / 1 Fahrzeug fährt |
 | Automatik | Alle inaktiv / Alle aktiv / 3 Automationen aktiv |
 
-Bei Audio wird „Alle pausiert“ angezeigt, wenn kein Audio-Player gerade wiedergibt. Die Statusanzeige berücksichtigt nur auswertbare Entitäten; `unknown` und `unavailable` werden ignoriert.
+Bei **Audio** wird wie gewünscht „Alle pausiert“ angezeigt, wenn kein Audio-Player gerade wiedergibt.
+Bei **Media** lautet der inaktive Status „Alle Geräte aus“.
+
+Fenster unterstützen neben normalen Home-Assistant-Kontakten auch die Loxone-typischen Composite-Zustände (`1` geschlossen, `2` gekippt, `3` offen, `4`/`5` geschlossen; `0` offline wird ignoriert), **wenn diese Werte als Entitätszustand in Home Assistant verfügbar sind**. Ein eigener Loxone-Adapter wird nicht mitgeliefert.
+
+Bei Heizung und Klima wird, soweit vorhanden, die tatsächliche `hvac_action` statt nur des eingestellten Modus berücksichtigt.
+Die Berechnung berücksichtigt nur auswertbare Entitäten; `unknown` und `unavailable` werden vollständig ignoriert.
 
 ## Hinweise
 

@@ -7,8 +7,8 @@ assert(!src.includes('--custom_'), 'Must not depend on custom theme variables');
 assert(!src.includes('edelmann'), 'Must not include original installation-specific entities');
 assert(!src.includes("icon:'local:"), 'Default icons must not depend on local icon packs');
 assert(src.includes('ha-icon-picker'), 'Must provide native Home Assistant icon picker');
-assert(src.includes('Version 1.0.5'), 'Editor must display Version 1.0.5');
-assert(src.includes('data-card-version=\"1.0.5\"'), 'Card version must match');
+assert(src.includes('Version 1.0.6'), 'Editor must display Version 1.0.6');
+assert(src.includes('data-card-version=\"1.0.6\"'), 'Card version must match');
 
 const testSrc = src.replace(/\}\)\(\);\s*$/, 'window.__test = { compute, createConfig, resolveEntities, KINDS };})();');
 const registry = new Map();
@@ -69,17 +69,17 @@ is('windows','1 geöffnet');
 is('windows','1 geöffnet',{source:'group',entity:'group.windows'});
 is('lights','2 Räume aktiv');
 is('energy','1 Gerät aktiv');
-is('heating','1 Raum heizen');
-is('climate','1 Raum kühlen');
+is('heating','1 Raum heizt');
+is('climate','1 Raum kühlt');
 is('audio','Spielt in 1 Raum');
-is('shading','1 offen · 1 geschlossen');
+is('shading','1 oben · 1 unten');
 is('media','1 Gerät aktiv');
 is('air','1 Sensor prüfen',{source:'selected',entities:['sensor.air_state']});
 is('air','Grenzwert wählen',{source:'selected',entities:['sensor.co2']});
 is('air','1 Sensor prüfen',{source:'selected',entities:['sensor.co2'],threshold:1000});
 is('lock','Verriegelt');
 is('alarmclock','1 Wecker aktiv',{source:'selected',entities:['switch.wakeup']});
-is('presence','1 Raum aktiv');
+is('presence','Präsenz in 1 Raum');
 is('people','1 anwesend');
 is('vehicles','1 Fahrzeug fährt',{source:'selected',entities:['binary_sensor.car'],active_state:'off'});
 is('automations','1 Automation aktiv');
@@ -95,14 +95,14 @@ states['media_player.speaker'].state='paused';
 is('audio','Alle pausiert',{source:'selected',entities:['media_player.speaker']});
 states['media_player.speaker'].state='playing';
 is('vehicles','Alle Fahrzeuge parken',{source:'selected',entities:['binary_sensor.car'],active_state:'on'});
-is('air','Raumluft ausgewogen',{source:'selected',entities:['sensor.air_state'],good_states:'schlecht'});
+is('air','Luftqualität gut',{source:'selected',entities:['sensor.air_state'],good_states:'schlecht'});
 is('automations','Alle aktiv',{source:'selected',entities:['automation.night']});
 // Unavailable and unknown entities are ignored (never counted or displayed).
 assert.equal(run('windows',{source:'selected',entities:['binary_sensor.bath_window','binary_sensor.missing']}).text,'Alle geschlossen');
 assert.equal(run('windows',{source:'selected',entities:['binary_sensor.kitchen_window','binary_sensor.missing']}).text,'1 geöffnet');
 assert.equal(run('windows',{source:'selected',entities:['binary_sensor.custom_sensor']}).text,'Keine Daten');
-assert.equal(run('shading',{source:'selected',entities:['cover.a','cover.not_found']}).text,'Alle offen');
-assert.equal(run('shading',{source:'selected',entities:['cover.a','cover.b']}).text,'1 offen · 1 geschlossen');
+assert.equal(run('shading',{source:'selected',entities:['cover.a','cover.not_found']}).text,'Alle oben');
+assert.equal(run('shading',{source:'selected',entities:['cover.a','cover.b']}).text,'1 oben · 1 unten');
 const groupRef=mk('group.windows_bad','on',{entity_id:['binary_sensor.bath_window','binary_sensor.missing']});
 states[groupRef.entity_id]=groupRef;
 assert.equal(run('windows',{source:'group',entity:groupRef.entity_id}).text,'Alle geschlossen');
@@ -117,7 +117,7 @@ assert.equal(registry.has('central-overview-card-editor'),true);
 assert.equal(windowStub.customCards[0].type,'central-overview-card');
 // Missing entities never influence counts; only available states are used.
 assert.equal(run('windows',{source:'selected',entities:['binary_sensor.bath_window','binary_sensor.missing']}).text,'Alle geschlossen');
-assert.equal(run('shading',{source:'selected',entities:['cover.b','cover.not_found']}).text,'Alle geschlossen');
+assert.equal(run('shading',{source:'selected',entities:['cover.b','cover.not_found']}).text,'Alle unten');
 assert.equal(run('lights',{source:'selected',entities:['light.missing']}).text,'Keine Daten');
 assert.equal(run('energy',{source:'selected',entities:['switch.missing']}).text,'Keine Daten');
 assert.equal(run('vehicles',{source:'selected',entities:['binary_sensor.missing'],active_state:'off'}).text,'Keine Daten');
@@ -131,8 +131,30 @@ states['alarm_control_panel.offline']=mk('alarm_control_panel.offline','unavaila
 assert.equal(run('alarm',{source:'selected',entities:['alarm_control_panel.house','alarm_control_panel.offline']}).text,'Scharf · Zuhause');
 states['light.unavailable']=mk('light.unavailable','unavailable');
 assert.equal(run('lights',{source:'selected',entities:['light.a','light.unavailable']}).text,'1 Raum aktiv');
+
+// Loxone composite window contact: 1=closed, 2=tilted, 3=open, 0=offline.
+states['sensor.loxone_closed']=mk('sensor.loxone_closed','1');
+states['sensor.loxone_tilted']=mk('sensor.loxone_tilted','2');
+states['sensor.loxone_open']=mk('sensor.loxone_open','3');
+states['sensor.loxone_offline']=mk('sensor.loxone_offline','0');
+assert.equal(run('windows',{source:'selected',entities:['sensor.loxone_closed','sensor.loxone_offline']}).text,'Alle geschlossen');
+assert.equal(run('windows',{source:'selected',entities:['sensor.loxone_open','sensor.loxone_tilted']}).text,'1 geöffnet · 1 gekippt');
+assert.equal(run('windows',{source:'selected',entities:['sensor.loxone_offline']}).text,'Keine Daten');
+assert.equal(run('windows',{source:'selected',entities:['sensor.loxone_tilted']}).text,'1 gekippt');
+// The real HVAC action takes precedence over the desired mode.
+states['climate.radiator'].attributes.hvac_action='idle';
+assert.equal(run('heating').text,'Keine Räume aktiv');
+states['climate.radiator'].attributes.hvac_action='heating';
+assert.equal(run('heating').text,'1 Raum heizt');
+states['binary_sensor.motion'].state='off';
+assert.equal(run('presence').text,'Keine Präsenz');
+states['binary_sensor.motion'].state='on';
+states['person.ben'].state='home';
+assert.equal(run('people').text,'Alle anwesend');
+states['person.ben'].state='not_home';
+
 for (const tile of cfg.tiles) {
   const r=run(tile.kind);
   assert(!/unbekannt|nicht verfügbar/i.test(r.text),`Unexpected unavailable/unknown label in ${tile.kind}`);
 }
-console.log('PASS: 16 short statuses, unknown/unavailable ignored, editor name/version, native themes and icons.');
+console.log('PASS: 16 Loxone-style short statuses, window tilt/codes, HVAC actions, unavailable ignored, editor and icons.');

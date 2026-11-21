@@ -1,4 +1,4 @@
-/* MYHS Central Card | Version 1.0.5 | MIT | Home Assistant Lovelace | no dependencies */
+/* MYHS Central Card | Version 1.0.6 | MIT | Home Assistant Lovelace | no dependencies */
 (() => {
   'use strict';
   const TAG = 'central-overview-card';
@@ -154,17 +154,36 @@
          icon:s==='unlocked'?'mdi:lock-open-variant':s==='jammed'?'mdi:lock-alert':undefined});
     }
     if (kind === 'windows') {
-      const open=usable.filter(st=>['on','open'].includes(st.state)).length;
-      return result(open?countMessage(open,'1 geöffnet',n=>`${n} geöffnet`):'Alle geschlossen',open>0);
+      // Loxone-style window statuses. Composite window contact states:
+      // 1=closed, 2=tilted, 3=open, 4/5=closed, 0=offline (ignored).
+      // Also understands regular Home Assistant binary window sensors.
+      let open=0, tilted=0, closed=0;
+      for (const st of usable) {
+        const state=st.state.trim().toLowerCase();
+        const a=st.attributes || {};
+        if (state==='0') continue; // Loxone offline, never count it.
+        if (['tilted','tilt','gekippt','2'].includes(state) || a.is_tilted===true || a.tilted===true)
+          tilted++;
+        else if (['on','open','opened','offen','3'].includes(state)) open++;
+        else if (['off','closed','geschlossen','1','4','5'].includes(state)) closed++;
+      }
+      const counted=open+tilted+closed;
+      if (!counted) return result('Keine Daten',false,{missing:true});
+      if (!open&&!tilted) return result('Alle geschlossen',false);
+      const text=[open?countMessage(open,'1 geöffnet',n=>`${n} geöffnet`):null,
+        tilted?countMessage(tilted,'1 gekippt',n=>`${n} gekippt`):null].filter(Boolean).join(' · ');
+      return result(text,true);
     }
     if (['lights','media','presence'].includes(kind)) {
       const on=usable.filter(st=>kind==='media'?
         ['on','playing','paused','idle'].includes(st.state):st.state==='on');
       const {count,rooms}=activeCountByRooms(hass,on);
-      const offText=kind==='lights'?'Alles aus':kind==='media'?'Alle Geräte aus':'Keine Bewegung';
-      const message=!count?offText:rooms?
-        countMessage(count,'1 Raum aktiv',n=>`${n} Räume aktiv`):
-        countMessage(count,'1 Gerät aktiv',n=>`${n} Geräte aktiv`);
+      const offText=kind==='lights'?'Alles aus':kind==='media'?'Alle Geräte aus':'Keine Präsenz';
+      const message=!count?offText:kind==='presence'?
+        (rooms?countMessage(count,'Präsenz in 1 Raum',n=>`Präsenz in ${n} Räumen`):
+          countMessage(count,'1 Sensor aktiv',n=>`${n} Sensoren aktiv`)):
+        rooms?countMessage(count,'1 Raum aktiv',n=>`${n} Räume aktiv`):
+          countMessage(count,'1 Gerät aktiv',n=>`${n} Geräte aktiv`);
       return result(message,count>0);
     }
     if (kind==='energy' || kind==='alarmclock') {
@@ -175,15 +194,25 @@
       return result(count?countMessage(count,singular,n=>`${n} ${plural} aktiv`):offText,count>0);
     }
     if (kind==='heating' || kind==='climate') {
-      const modes=[{s:'heat',word:'heizen'},{s:'cool',word:'kühlen'},
-        {s:'fan_only',word:'lüften'},{s:'heat_cool',word:'im Automatikmodus'},
-        {s:'auto',word:'im Automatikmodus'}];
-      const active=modes.map(m=>({...m,count:usable.filter(st=>st.state===m.s).length}))
+      // Prefer real HVAC action when reported; otherwise use the selected mode.
+      // This avoids reporting an idle room as actively heating or cooling.
+      const operating=usable.map(st=>{
+        const action=String(st.attributes?.hvac_action||'').toLowerCase();
+        if (action==='heating') return 'heat';
+        if (action==='cooling') return 'cool';
+        if (action==='fan') return 'fan_only';
+        if (['idle','off'].includes(action))
+          return ['auto','heat_cool'].includes(st.state)?'auto':null;
+        return st.state;
+      });
+      const modes=[{s:'heat',singular:'heizt',plural:'heizen'},
+        {s:'cool',singular:'kühlt',plural:'kühlen'},
+        {s:'fan_only',singular:'lüftet',plural:'lüften'},
+        {s:'auto',singular:'Automatik',plural:'Automatik'}];
+      const active=modes.map(m=>({...m,count:operating.filter(s=>s===m.s || (m.s==='auto'&&s==='heat_cool')).length}))
         .filter(m=>m.count&&(kind==='climate'||m.s!=='fan_only'));
       if (!active.length) return result('Keine Räume aktiv',false);
-      const text=active.map(m=>m.word==='im Automatikmodus'?
-        `${m.count} im Automatikmodus`:
-        `${m.count} ${m.count===1?'Raum':'Räume'} ${m.word}`).join(' · ');
+      const text=active.map(m=>`${m.count} ${m.count===1?'Raum':'Räume'} ${m.count===1?m.singular:m.plural}`).join(' · ');
       return result(text,true);
     }
     if (kind==='audio') {
@@ -206,12 +235,12 @@
         // Other, unsupported states do not count as open or closed.
 
       }
-      const words=[open?`${open} offen`:null,partial?`${partial} teilweise`:null,
-        closed?`${closed} geschlossen`:null].filter(Boolean);
+      const words=[open?`${open} oben`:null,partial?`${partial} teilweise`:null,
+        closed?`${closed} unten`:null].filter(Boolean);
       const counted=open+closed+partial;
       if (!counted) return result('Keine Daten',false,{missing:true});
-      const text=open===counted?'Alle offen':
-        closed===counted?'Alle geschlossen':words.join(' · ');
+      const text=open===counted?'Alle oben':
+        closed===counted?'Alle unten':words.join(' · ');
       return result(text,Boolean(auto||closed||partial),
         {icon:auto?'mdi:blinds-horizontal':closed===counted?'mdi:blinds':'mdi:blinds-open'});
     }
@@ -231,14 +260,16 @@
       });
       if(noRule&&threshold===null) return result('Grenzwert wählen',false,{missing:true});
       const {count,rooms}=activeCountByRooms(hass,bad);
-      return result(!count?'Raumluft ausgewogen':rooms?
+      return result(!count?'Luftqualität gut':rooms?
         countMessage(count,'1 Raum lüften',n=>`${n} Räume lüften`):
         countMessage(count,'1 Sensor prüfen',n=>`${n} Sensoren prüfen`),count>0);
     }
     if (kind==='people') {
       const home=usable.filter(st=>st.state==='home'||(tile.include_zones&&st.state!=='not_home'));
       const count=home.length;
-      return result(count?countMessage(count,'1 anwesend',n=>`${n} anwesend`):'Alle abwesend',count>0);
+      return result(!count?'Alle abwesend':
+        count>1&&count===usable.length?'Alle anwesend':
+        countMessage(count,'1 anwesend',n=>`${n} anwesend`),count>0);
     }
     if (kind==='vehicles') {
       const wanted=(tile.active_state||'on').toLowerCase();
@@ -341,7 +372,7 @@
     _update() {
       if (!this._config) return;
       if (!this._rendered) {
-        this.shadowRoot.innerHTML=`<style>${CARD_CSS}</style><ha-card data-card-version="1.0.5"><div class="grid"></div></ha-card>`;
+        this.shadowRoot.innerHTML=`<style>${CARD_CSS}</style><ha-card data-card-version="1.0.6"><div class="grid"></div></ha-card>`;
         this.shadowRoot.querySelector('.grid').addEventListener('click',(ev)=>{
           const btn=ev.target.closest('button.tile');
           if (!btn) return;
@@ -845,7 +876,7 @@
         <header class="intro">
           <div class="brand-icon"><ha-icon icon="mdi:view-dashboard-outline"></ha-icon></div>
           <div class="intro-copy"><h3>MYHS Central Card</h3><p>Deine zentrale Smart-Home-Übersicht</p></div>
-          <span class="version">Version 1.0.5</span>
+          <span class="version">Version 1.0.6</span>
         </header>
         <details class="settings" ${this._settingsOpen?'open':''}>
           <summary><span class="settings-icon"><ha-icon icon="mdi:tune-variant"></ha-icon></span>
@@ -876,7 +907,7 @@
           <div class="add-controls"><select id="new-kind" aria-label="Neuen Kacheltyp wählen">${Object.entries(KINDS).map(([v,d])=>option(v,d.label,'')).join('')}</select>
             <button type="button" class="primary" id="add-tile">+ Hinzufügen</button></div></div>
         <p class="footer-note" id="filter-count"></p>
-        <p class="footer-note">Tipp: Für Wecker, Fahrzeuge und Raumluft eigene Entitäten auswählen. · Version 1.0.5</p>
+        <p class="footer-note">Tipp: Für Wecker, Fahrzeuge und Raumluft eigene Entitäten auswählen. · Version 1.0.6</p>
       </div>`;
       const search=this.shadowRoot.querySelector('#tile-search');
       if(search)search.value=this._searchQuery;
