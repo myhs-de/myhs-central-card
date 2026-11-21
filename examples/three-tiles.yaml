@@ -1,0 +1,16 @@
+type: custom:central-overview-card
+columns: 2
+show_labels: true
+tiles:
+  - kind: alarm
+    label: Sicherheit
+    source: auto
+    tone: auto
+  - kind: windows
+    label: Fenster
+    source: auto
+    tone: error
+  - kind: lights
+    label: Beleuchtung
+    source: auto
+    tone: warning
