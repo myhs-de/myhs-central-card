@@ -7,8 +7,8 @@ assert(!src.includes('--custom_'), 'Must not depend on custom theme variables');
 assert(!src.includes('edelmann'), 'Must not include original installation-specific entities');
 assert(!src.includes("icon:'local:"), 'Default icons must not depend on local icon packs');
 assert(src.includes('ha-icon-picker'), 'Must provide native Home Assistant icon picker');
-assert(src.includes('Version 1.0.6'), 'Editor must display Version 1.0.6');
-assert(src.includes('data-card-version=\"1.0.6\"'), 'Card version must match');
+assert(src.includes('Version 1.0.7'), 'Editor must display Version 1.0.7');
+assert(src.includes('data-card-version=\"1.0.7\"'), 'Card version must match');
 
 const testSrc = src.replace(/\}\)\(\);\s*$/, 'window.__test = { compute, createConfig, resolveEntities, KINDS };})();');
 const registry = new Map();
@@ -131,6 +131,27 @@ states['alarm_control_panel.offline']=mk('alarm_control_panel.offline','unavaila
 assert.equal(run('alarm',{source:'selected',entities:['alarm_control_panel.house','alarm_control_panel.offline']}).text,'Scharf · Zuhause');
 states['light.unavailable']=mk('light.unavailable','unavailable');
 assert.equal(run('lights',{source:'selected',entities:['light.a','light.unavailable']}).text,'1 Raum aktiv');
+// Exactly three new selection methods: automatic, entities, and rooms.
+assert(src.includes("auto:'Automatisch',selected:'Entitäten',areas:'Räume'"));
+assert.equal(cfg.tiles[0].areas.length,0);
+assert.equal(run('lights',{source:'areas',areas:[]}).text,'Quelle wählen');
+assert.equal(run('lights',{source:'areas',areas:['living']}).text,'1 Raum aktiv');
+assert.equal(run('lights',{source:'areas',areas:['living','kitchen']}).text,'2 Räume aktiv');
+assert.equal(run('lights',{source:'areas',areas:['unused']}).text,'Keine Daten');
+// Room filtering uses the entity registry first, then the device registry.
+hass.devices={'device-hall':{area_id:'hall'}};
+hass.entities['light.hall']={device_id:'device-hall'};
+states['light.hall']=mk('light.hall','on');
+assert.equal(run('lights',{source:'areas',areas:['hall']}).text,'1 Raum aktiv');
+assert.equal(run('lights',{source:'areas',areas:['living','hall']}).text,'2 Räume aktiv');
+// Duplicate device entities within a room do not create duplicate rooms.
+hass.entities['light.hall_second']={device_id:'device-hall'};
+states['light.hall_second']=mk('light.hall_second','on');
+assert.equal(run('lights',{source:'areas',areas:['hall']}).text,'1 Raum aktiv');
+// Switching modes never leaks an old area/prefix restriction into room selection.
+assert.equal(run('lights',{source:'areas',areas:['living'],area:'kitchen',prefix:'switch.'}).text,'1 Raum aktiv');
+// Manually selected entities keep working regardless of room assignment.
+assert.equal(run('lights',{source:'selected',entities:['light.a']}).text,'1 Raum aktiv');
 
 // Numeric window contact: 1=closed, 2=tilted, 3=open, 0=offline.
 states['sensor.window_code_closed']=mk('sensor.window_code_closed','1');
@@ -157,4 +178,4 @@ for (const tile of cfg.tiles) {
   const r=run(tile.kind);
   assert(!/unbekannt|nicht verfügbar/i.test(r.text),`Unexpected unavailable/unknown label in ${tile.kind}`);
 }
-console.log('PASS: 16 short German statuses, window tilt/codes, HVAC actions, unavailable ignored, editor and icons.');
+console.log('PASS: 16 short German statuses, 3 source methods, room/device registries, unavailable ignored, editor and icons.');

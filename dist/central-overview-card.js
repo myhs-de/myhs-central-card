@@ -1,4 +1,4 @@
-/* MYHS Central Card | Version 1.0.6 | MIT | Home Assistant Lovelace | no dependencies */
+/* MYHS Central Card | Version 1.0.7 | MIT | Home Assistant Lovelace | no dependencies */
 (() => {
   'use strict';
   const TAG = 'central-overview-card';
@@ -44,7 +44,7 @@
     info:'Info (Blau)', orange:'Orange', cyan:'Cyan', purple:'Lila', pink:'Pink',
     red:'Rot', green:'Grün', yellow:'Gelb', blue:'Blau', amber:'Amber'};
   const createTile = (kind) => ({kind, label:KINDS[kind].label, icon:KINDS[kind].icon,
-    source:KINDS[kind].source, entities:[], enabled:true, navigation_path:'',
+    source:KINDS[kind].source, entities:[], areas:[], enabled:true, navigation_path:'',
     tone:['alarm','lock'].includes(kind)?'auto':KINDS[kind].tone, include_zones:kind==='people'});
   const createConfig = () => ({type:`custom:${TAG}`, columns:2, gap:8, show_labels:true,
     alarm_home_legacy:false, tiles:Object.keys(KINDS).map(createTile)});
@@ -105,6 +105,9 @@
     if (source === 'group') ids = groupChildren(hass, tile.entity);
     else if (source === 'selected') ids = uniq(strings(tile.entities).length ? strings(tile.entities) : (tile.entity ? [tile.entity] : []));
     else {
+      const chosenAreas = strings(tile.areas);
+      // With room selection, no room selected means no entities.
+      if (source === 'areas' && !chosenAreas.length) return [];
       ids = ['alarm','lock'].includes(tile.kind) && tile.entity ? [tile.entity] :
         Object.values(hass?.states || {}).filter(st => autoCandidate(tile.kind,st)).map(st => st.entity_id);
       // Expand aggregation entities to their individual members so an open
@@ -113,9 +116,14 @@
         const e=stateById(hass,id);
         return e?.attributes?.entity_id ? groupChildren(hass,id) : [id];
       }));
+      if (source === 'areas') {
+        const allowed = new Set(chosenAreas);
+        ids = ids.filter(id => allowed.has(areaId(hass,id)));
+      }
     }
-    if (tile.prefix) ids = ids.filter(id => id.startsWith(tile.prefix));
-    if (tile.area) ids = ids.filter(id => areaId(hass,id) === tile.area);
+    // Preserve existing prefix/area configuration for legacy source modes.
+    if (source !== 'areas' && tile.prefix) ids = ids.filter(id => id.startsWith(tile.prefix));
+    if (source !== 'areas' && tile.area) ids = ids.filter(id => areaId(hass,id) === tile.area);
     // Preserve configured identifiers; filter unavailable/unknown states when calculating.
     return uniq(ids).map(id => stateById(hass,id) || {entity_id:id,state:'unavailable',attributes:{}});
   }
@@ -130,7 +138,8 @@
     // Completely ignore unavailable/unknown entities for every counter and status.
     const usable = resolveEntities(hass,tile).filter(hasState);
     const hasSelection = strings(tile.entities).length > 0 || Boolean(tile.entity);
-    const needsSetup = ['air','alarmclock','vehicles'].includes(kind) && !hasSelection;
+    const needsSetup = tile.source === 'areas' ? !strings(tile.areas).length :
+      ['air','alarmclock','vehicles'].includes(kind) && !hasSelection;
     if (!usable.length) return result(needsSetup?'Quelle wählen':'Keine Daten',false,{missing:true});
 
     if (kind === 'alarm' || kind === 'lock') {
@@ -372,7 +381,7 @@
     _update() {
       if (!this._config) return;
       if (!this._rendered) {
-        this.shadowRoot.innerHTML=`<style>${CARD_CSS}</style><ha-card data-card-version="1.0.6"><div class="grid"></div></ha-card>`;
+        this.shadowRoot.innerHTML=`<style>${CARD_CSS}</style><ha-card data-card-version="1.0.7"><div class="grid"></div></ha-card>`;
         this.shadowRoot.querySelector('.grid').addEventListener('click',(ev)=>{
           const btn=ev.target.closest('button.tile');
           if (!btn) return;
@@ -520,6 +529,12 @@
     .edit-body[hidden] {display:none !important;}
     .edit-section + .edit-section {border-top:1px solid var(--divider-color,#ddd);padding-top:15px;}
     .hint {font-size:11px;line-height:1.5;margin:6px 0 0;color:var(--secondary-text-color);}
+    .area-list {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 12px;
+      padding:12px;border:1px solid var(--divider-color,#ddd);border-radius:9px;
+      max-height:220px;overflow-y:auto;}
+    .area-list .check {min-width:0;}
+    .area-list .check span {min-width:0;overflow-wrap:anywhere;}
+    @media (max-width:360px) {.area-list {grid-template-columns:1fr;}}
     .entity-list {display:flex;flex-wrap:wrap;gap:6px;margin:8px 0;}
     .chip {max-width:100%;display:inline-flex;align-items:center;gap:7px;border-radius:8px;
       padding:5px 6px 5px 9px;background:var(--secondary-background-color,#eee);font-size:11px;overflow-wrap:anywhere;}
@@ -549,7 +564,7 @@
       .add-controls {grid-template-columns:1fr;}}
     @media (prefers-reduced-motion:reduce) {.chevron {transition:none;}}
   `;
-  const sourceLabels={auto:'Automatische Erkennung',selected:'Entitäten auswählen',group:'Gruppe / Helfer'};
+  const sourceLabels={auto:'Automatisch',selected:'Entitäten',areas:'Räume'};
   // The visual editor uses one event dispatcher for its lifetime. Each update
   // creates a fresh, independent config object: Home Assistant never receives
   // an object which we will mutate later. This also makes Undo/Redo reliable.
@@ -634,6 +649,7 @@
       this._commit(cfg=>{
         const t=cfg.tiles[i];
         t[field]=value;
+        if(field==='source'){delete t.area;delete t.prefix;}
         if(field==='kind' && KINDS[value]){
           const oldDefaults=KINDS[old.kind]||{}, defaults=KINDS[value];
           if(!old.label||old.label===oldDefaults.label)t.label=defaults.label;
@@ -641,7 +657,7 @@
           if(!old.tone||old.tone===oldDefaults.tone||old.tone==='auto')
             t.tone=['alarm','lock'].includes(value)?'auto':defaults.tone;
           if(old.source===oldDefaults.source)t.source=defaults.source;
-          t.entities=[];delete t.entity;
+          t.entities=[];t.areas=[];delete t.entity;
         }
       },{openIndex:structural?i:undefined});
     }
@@ -732,6 +748,16 @@
       if(!field||['manual-entity','new-entity'].includes(field))return;
       const row=el.closest('.tile-item');if(!row)return;
       const i=Number(row.dataset.i);
+      if (field === 'area-selection') {
+        const id=el.value;
+        this._commit(cfg=>{
+          const t=cfg.tiles[i];
+          const selected=new Set(strings(t.areas));
+          if(el.checked)selected.add(id);else selected.delete(id);
+          t.areas=[...selected];
+        },{openIndex:i});
+        return;
+      }
       const value=el.type==='checkbox'?el.checked:el.value;
       this._tileUpdate(i,field,value);
     }
@@ -770,18 +796,18 @@
     _render() {
       if(!this._config) return;
       const cfg=this._config;
-      const areas=Object.values(this._hass?.areas||{}).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+      const areas=Object.values(this._hass?.areas||{}).sort((a,b)=>String(a.name).localeCompare(String(b.name),'de'));
       const option=(value,label,current)=>`<option value="${esc(value)}" ${String(value)===String(current)?'selected':''}>${esc(label)}</option>`;
       const editorTile=(tile,i)=>{
         const k=KINDS[tile.kind]||KINDS.lights;
         const mode=tile.source||k.source;
         const enabled=tile.enabled!==false;
-        const isSelected=mode==='selected',isGroup=mode==='group';
+        const isSelected=mode==='selected',isGroup=mode==='group',isAreas=mode==='areas';
         const displayName=tile.label??k.label;
         const tone=tile.tone==='auto'?k.tone:(tile.tone||k.tone);
         const color=COLOR_VARS[tone]||COLOR_VARS.info;
-        const sourceDetail=isSelected?`${strings(tile.entities).length} ausgewählt`:
-          isGroup?'Gruppe / Helfer':'Automatisch';
+        const sourceDetail=isSelected?`${strings(tile.entities).length} Entitäten`:isAreas?
+          `${strings(tile.areas).length} Räume`:isGroup?'Bestehende Gruppe':'Automatisch';
         const advancedFields=[];
         if(tile.kind==='shading')advancedFields.push(`<div class="control wide"><span>Automatik-Entität (optional)</span><ha-entity-picker data-field="automation_entity" value="${esc(tile.automation_entity||'')}"></ha-entity-picker>
           <input data-field="automation_entity" value="${esc(tile.automation_entity||'')}" aria-label="Automatik Entitäts-ID manuell" placeholder="Entitäts-ID eingeben"></div>`);
@@ -793,6 +819,14 @@
         if(tile.kind==='vehicles')advancedFields.push(`<label class="control wide">Zustand, der „fährt“ bedeutet
           <input data-field="active_state" value="${esc(tile.active_state||'on')}" placeholder="on"></label>`);
         if(tile.kind==='people')advancedFields.push(`<label class="check wide"><input type="checkbox" data-field="include_zones" ${tile.include_zones?'checked':''}>Personen in anderen Zonen als anwesend zählen</label>`);
+        const roomsFields=isAreas?`<div class="wide"><span class="control">Räume auswählen</span>
+          ${areas.length ? `<div class="area-list">${areas.map(a=>{
+            const id=a.area_id||a.id;
+            return `<label class="check"><input type="checkbox" data-field="area-selection" value="${esc(id)}" ${strings(tile.areas).includes(id)?'checked':''}><span>${esc(a.name)}</span></label>`;
+          }).join('')}</div>` : '<p class="hint">Keine Räume vorhanden. Bitte zuerst in Home Assistant Räume anlegen.</p>'}
+          <p class="hint">Alle passenden Entitäten aus den gewählten Räumen werden automatisch berücksichtigt. Mehrere Entitäten im selben Raum zählen bei raumbasierten Anzeigen nur einmal.</p>
+          ${['air','alarmclock','vehicles'].includes(tile.kind)?'<p class="hint">Für diesen Kacheltyp ist die manuelle Auswahl unter „Entitäten“ meist genauer.</p>':''}
+        </div>`:'';
         const selectedFields=isSelected?`<div class="wide"><span class="control">Ausgewählte Entitäten</span>
           <div class="entity-list">${strings(tile.entities).map((id,j)=>`<span class="chip">${esc(id)}<button type="button" data-action="remove-entity" data-j="${j}" title="Entität entfernen" aria-label="${esc(id)} entfernen">×</button></span>`).join('')}</div>
           <div class="add-row"><ha-entity-picker data-field="new-entity" allow-custom-entity></ha-entity-picker>
@@ -840,16 +874,16 @@
               </div>
             </section>
             <section class="edit-section">
-              <div class="section-heading"><strong>Datenquelle</strong><small>Welche Geräte werden berücksichtigt?</small></div>
+              <div class="section-heading"><strong>Datenquelle</strong><small>Welche Entitäten werden berücksichtigt?</small></div>
               <div class="fields">
-                <label class="control wide">Auswahlmethode<select data-field="source">${Object.entries(sourceLabels).map(([v,d])=>option(v,d,mode)).join('')}</select></label>
+                <label class="control wide">Auswahlmethode<select data-field="source">${Object.entries(sourceLabels).map(([v,d])=>option(v,d,mode)).join('')}${isGroup?option('group','Bestehende Gruppe',mode):''}</select></label>
                 ${mode==='auto'?`<label class="control">Bereich<select data-field="area">${option('','Alle Bereiche',tile.area||'')}${areas.map(a=>option(a.area_id||a.id,a.name,tile.area||'')).join('')}</select></label>
                   <label class="control">Entitäts-Präfix (optional)<input data-field="prefix" value="${esc(tile.prefix||'')}" placeholder="z. B. light."></label>`:''}
                 ${(isGroup||(mode==='auto' && ['alarm','lock'].includes(tile.kind)))?`<div class="control wide"><span>${isGroup?'Gruppe / Helfer':'Einzelne Entität (optional)'}</span>
                   <ha-entity-picker data-field="entity" allow-custom-entity value="${esc(tile.entity||'')}"></ha-entity-picker>
                   <input data-field="entity" value="${esc(tile.entity||'')}" aria-label="Entitäts-ID manuell"
                     placeholder="Alternativ Entitäts-ID eingeben" spellcheck="false"></div>`:''}
-                ${selectedFields}
+                ${selectedFields}${roomsFields}
               </div>
               ${mode==='auto'?'<p class="hint">Passende Entitäten werden automatisch über Home Assistant erkannt. Über Bereich und Präfix kannst du die Auswahl eingrenzen.</p>':''}
             </section>
@@ -876,7 +910,7 @@
         <header class="intro">
           <div class="brand-icon"><ha-icon icon="mdi:view-dashboard-outline"></ha-icon></div>
           <div class="intro-copy"><h3>MYHS Central Card</h3><p>Deine zentrale Smart-Home-Übersicht</p></div>
-          <span class="version">Version 1.0.6</span>
+          <span class="version">Version 1.0.7</span>
         </header>
         <details class="settings" ${this._settingsOpen?'open':''}>
           <summary><span class="settings-icon"><ha-icon icon="mdi:tune-variant"></ha-icon></span>
@@ -907,7 +941,7 @@
           <div class="add-controls"><select id="new-kind" aria-label="Neuen Kacheltyp wählen">${Object.entries(KINDS).map(([v,d])=>option(v,d.label,'')).join('')}</select>
             <button type="button" class="primary" id="add-tile">+ Hinzufügen</button></div></div>
         <p class="footer-note" id="filter-count"></p>
-        <p class="footer-note">Tipp: Für Wecker, Fahrzeuge und Raumluft eigene Entitäten auswählen. · Version 1.0.6</p>
+        <p class="footer-note">Tipp: Auswahl über Automatisch, Entitäten oder Räume. · Version 1.0.7</p>
       </div>`;
       const search=this.shadowRoot.querySelector('#tile-search');
       if(search)search.value=this._searchQuery;

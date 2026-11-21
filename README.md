@@ -3,7 +3,7 @@
 ![MYHS Logo](images/myhs-logo.png)
 
 **MYHS Cards for Home Assistant**  
-**Version 1.0.6** · 16 Status-Kacheln · Visueller Editor · Kurze Statusmeldungen
+**Version 1.0.7** · 16 Status-Kacheln · Visueller Editor · Kurze Statusmeldungen
 
 MYHS Central Card ist eine moderne Dashboard-Karte für Home Assistant. Sie fasst wichtige Informationen aus deinem Smart Home in einer flexibel konfigurierbaren Übersicht zusammen – mit klaren Statusanzeigen, farbigen Verläufen und einem integrierten visuellen Editor.
 
@@ -16,7 +16,7 @@ MYHS Central Card ist eine moderne Dashboard-Karte für Home Assistant. Sie fass
 - **16 individuell konfigurierbare Kacheltypen** für die wichtigsten Smart-Home-Bereiche
 - **Visueller Home-Assistant-Editor** – konfigurieren ohne YAML
 - **Einfache Kachelverwaltung** – bearbeiten, sortieren, duplizieren und über das Auge ein- oder ausblenden
-- **Flexible Datenquellen** – automatische Erkennung, gezielte Entitätsauswahl oder Gruppen/Helfer
+- **Flexible Datenquellen** – automatische Erkennung, individuelle Entitätsauswahl oder Auswahl nach Räumen
 - **Freie Icon-Auswahl** – integrierte Home-Assistant-Suche sowie manuelle Eingabe
 - **Theme-kompatibles Design** – Home-Assistant-Farben, dynamische Farbverläufe und helle/dunkle Themes
 - **Flexible Darstellung** – 1 bis 4 Spalten, individuell einstellbare Abstände und Navigationsziele
@@ -53,7 +53,7 @@ Jede Kachel besitzt eine eigene Schaltfläche zum **Bearbeiten** sowie ein separ
 | Fahrzeuge | Frei definierbare Fahrzeugzustände |
 | Automationen | Aktivierte Automationen |
 
-Die automatische Erkennung nutzt Home-Assistant-Entitätsdomänen und Geräteklassen. Abweichende Geräte lassen sich über die Entitätsauswahl oder über Gruppen und Helfer einbinden. Bei einigen Kacheltypen, etwa Fahrzeugen und Raumluft, ist die manuelle Zuordnung vorgesehen.
+Die automatische Erkennung nutzt Home-Assistant-Entitätsdomänen und Geräteklassen. Abweichende Geräte lassen sich gezielt über die Entitätsauswahl einbinden. Mit der Raumauswahl werden passende Entitäten aus ausgewählten Home-Assistant-Räumen automatisch berücksichtigt. Bei einigen Kacheltypen, etwa Fahrzeugen und Raumluft, ist die manuelle Zuordnung vorgesehen.
 
 ## Installation
 
@@ -85,7 +85,10 @@ tiles:
     tone: error
   - kind: lights
     label: Beleuchtung
-    source: auto
+    source: areas
+    areas:
+      - wohnzimmer
+      - kueche
     tone: warning
   - kind: people
     label: Anwesenheit
@@ -93,13 +96,17 @@ tiles:
     tone: pink
 ```
 
+Bei `source: areas` sind die Werte in `areas` die Raum-IDs aus Home Assistant.
+
 Ohne eigene Kachelliste zeigt die Standardkonfiguration die 16 verfügbaren Typen. Bestehende Konfigurationen verwenden weiterhin den Kartentyp `custom:central-overview-card`.
 
 ### Datenquellen
 
 - **Automatisch:** Passende Home-Assistant-Entitäten werden anhand von Domäne und Geräteklasse gesucht.
-- **Entitäten:** Eine oder mehrere Entitäten werden direkt ausgewählt.
-- **Gruppe/Helfer:** Die Daten kommen aus einer vorhandenen Gruppen- oder Helfer-Entität.
+- **Entitäten:** Eine oder mehrere Entitäten werden direkt und unabhängig vom Raum ausgewählt.
+- **Räume:** Einen oder mehrere Home-Assistant-Räume auswählen. Die Karte ermittelt passende Entitäten innerhalb der ausgewählten Räume automatisch – auch dann, wenn die Raumzuordnung über das Gerät erfolgt.
+
+Bei raumbasierten Statusanzeigen werden mehrere aktive Entitäten innerhalb desselben Raums nur einmal als Raum gezählt. Bestehende Gruppen-/Helfer-Konfigurationen bleiben kompatibel; für neue Einstellungen stehen die drei Auswahlmethoden zur Verfügung.
 
 Die Darstellung und die aktiv verwendeten Farben passen sich an die Home-Assistant-Theme-Variablen an. Es werden keine benutzerdefinierten Farbvariablen benötigt.
 
